@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Archivo Black", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-sans: "Inter", sans-serif;
+
+  --color-cream: #F5F0E6;
+  --color-charcoal: #121212;
+  --color-panel: #D9D9D9;
+  --color-navy: #1E2640;
+  --color-orange: #D9531E;
+  --color-ink: #111111;
+  --color-muted: #6B6B6B;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: #F5F0E6;
+    color: #111111;
+    font-family: "Inter", sans-serif;
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.32s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}

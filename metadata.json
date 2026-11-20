@@ -1,0 +1,6 @@
+{
+  "name": "Data Structures & Algorithms Case Studies",
+  "description": "Interactive educational visualizations for Stacks (LIFO), Queues (FIFO), Binary Trees, Binary Search Trees, and the Tower of Hanoi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
