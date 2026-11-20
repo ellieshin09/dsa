@@ -110,9 +110,8 @@ export function enterStackCar(currentSlots: StackCar[], carId: number): StackOpe
 
 /**
  * Stack (LIFO) Exit Operation:
- * Pops every car stacked above the target car into a temporary holding bay (incrementing exits),
- * removes the target car permanently (incrementing its exits),
- * and pushes held cars back in reverse order (incrementing entries) to preserve ascending order.
+ * Pops the full stack into temporary parking from top to bottom, removes the target car,
+ * then restores the remaining cars by popping the temporary stack in LIFO order.
  */
 export function exitStackCar(currentSlots: StackCar[], carId: number): StackOperationResult {
   const targetIdx = currentSlots.findIndex((c) => c.id === carId);
@@ -125,44 +124,40 @@ export function exitStackCar(currentSlots: StackCar[], carId: number): StackOper
     };
   }
 
-  const workingSlots = currentSlots.map((c) => ({ ...c }));
+  const workingSlots: StackCar[] = [];
   const holdingBay: StackCar[] = [];
   const steps: StackStepSnapshot[] = [];
 
-  // 1. Pop vehicles stacked above the target car one by one into holding bay
-  while (workingSlots.length - 1 > targetIdx) {
-    const fromSlot = workingSlots.length;
-    const popped = workingSlots.pop()!;
+  for (let fromSlot = currentSlots.length; fromSlot > 0; fromSlot -= 1) {
+    const popped = { ...currentSlots[fromSlot - 1] };
     popped.exits += 1;
     holdingBay.push({ ...popped });
 
     steps.push({
-      slots: workingSlots.map((c) => ({ ...c })),
+      slots: currentSlots.slice(0, fromSlot - 1).map((c) => ({ ...c })),
       holdingBay: holdingBay.map((c) => ({ ...c })),
       activeCarId: popped.id,
       log: {
         type: 'TEMP_EXIT',
-        message: `[TEMP EXIT] Car #${popped.id} popped from Slot #${fromSlot} to holding bay (Exits: ${popped.exits}).`,
+        message: `[TEMP EXIT] Car #${popped.id} popped from Slot #${fromSlot} to temporary parking (Exits: ${popped.exits}).`,
       },
     });
   }
 
-  // 2. Target car exits permanently
-  const targetSlotNum = workingSlots.length;
-  const targetCar = workingSlots.pop()!;
+  const targetHoldingIndex = holdingBay.findIndex((car) => car.id === carId);
+  const targetCar = holdingBay.splice(targetHoldingIndex, 1)[0];
   targetCar.exits += 1;
 
   steps.push({
-    slots: workingSlots.map((c) => ({ ...c })),
+    slots: [],
     holdingBay: holdingBay.map((c) => ({ ...c })),
     activeCarId: targetCar.id,
     log: {
       type: 'PERM_EXIT',
-      message: `[PERM EXIT] Car #${targetCar.id} left permanently from Slot #${targetSlotNum} (Total: ${targetCar.entries} entries, ${targetCar.exits} exits).`,
+      message: `[PERM EXIT] Car #${targetCar.id} left permanently from the temporary parking slots (Total: ${targetCar.entries} entries, ${targetCar.exits} exits).`,
     },
   });
 
-  // 3. Push temporarily popped vehicles back in reverse order (LIFO from holding bay)
   while (holdingBay.length > 0) {
     const returning = holdingBay.pop()!;
     returning.entries += 1;
