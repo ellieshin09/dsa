@@ -39,6 +39,8 @@ const STACK = {
 };
 const STACK_HOLDING = {
   capacity: CAPACITY - 1,
+  left: 8,
+  width: STACK.size[0] - 16,
   top: 735,
   aisleY: 765,
   stallTop: 779,
@@ -209,7 +211,10 @@ function departure(isStack: boolean, slot: number): Waypoint[] {
 
 function stackHoldingPose(space: number): Pose {
   return {
-    x: (STACK.size[0] * (space + 0.5)) / STACK_HOLDING.capacity,
+    x:
+      STACK_HOLDING.left +
+      (STACK_HOLDING.width * (space + 0.5)) /
+        STACK_HOLDING.capacity,
     y: STACK_HOLDING.parkY,
     angle: 0,
     scale: STACK_HOLDING.scale,
@@ -507,7 +512,8 @@ type ParkingProps = {
 };
 
 function StackMap({ held }: { held: number }) {
-  const spaceWidth = STACK.size[0] / STACK_HOLDING.capacity;
+  const spaceWidth =
+    STACK_HOLDING.width / STACK_HOLDING.capacity;
   return (
     <>
       <svg
@@ -516,9 +522,9 @@ function StackMap({ held }: { held: number }) {
         aria-hidden="true"
       >
         <rect
-          x="8"
+          x={STACK_HOLDING.left}
           y={STACK_HOLDING.top}
-          width={STACK.size[0] - 16}
+          width={STACK_HOLDING.width}
           height={STACK.size[1] - STACK_HOLDING.top - 10}
           rx="9"
           fill="var(--queue-hold-fill)"
@@ -542,7 +548,7 @@ function StackMap({ held }: { held: number }) {
         {Array.from({ length: STACK_HOLDING.capacity + 1 }, (_, index) => (
           <path
             key={index}
-            d={`M ${spaceWidth * index} ${STACK_HOLDING.stallTop} v ${STACK_HOLDING.stallHeight}`}
+            d={`M ${STACK_HOLDING.left + spaceWidth * index} ${STACK_HOLDING.stallTop} v ${STACK_HOLDING.stallHeight}`}
             stroke="var(--accent)"
             strokeOpacity=".55"
             strokeWidth="1"
@@ -555,9 +561,9 @@ function StackMap({ held }: { held: number }) {
         aria-label="Stack temporary holding spaces"
         style={rect(
           [
-            0,
+            STACK_HOLDING.left,
             STACK_HOLDING.stallTop,
-            STACK.size[0],
+            STACK_HOLDING.width,
             STACK_HOLDING.stallHeight,
           ],
           STACK.size,
@@ -1025,11 +1031,6 @@ export default function Parking({
           "Lot is full. Exit a car to free a slot.",
           true,
         );
-      if (isStack && cars.length && id <= cars[cars.length - 1])
-        return show(
-          "Enter a car number above the current top.",
-          true,
-        );
     }
     void run(id, action);
   }
@@ -1237,7 +1238,7 @@ const parkingStyles = `
   .reference-parking .ref-lot { min-width: 0; background: var(--panel); }
   .reference-parking.ref-queue .ref-lot { background: transparent; }
   .reference-parking .ref-surface { position: relative; overflow: hidden; container-type: inline-size; height: 286px; }
-  .ref-stack .ref-surface { height: 900px; }
+  .ref-stack .ref-surface { height: auto; aspect-ratio: ${STACK.size[0]} / ${STACK.size[1]}; }
   .reference-parking .queue-surface { height: auto; aspect-ratio: ${QUEUE_WIDTH} / ${QUEUE_HEIGHT}; }
   .ref-surface > * { position: absolute; }
   .ref-aisle { background: rgba(41,49,82,.045); }
@@ -1253,8 +1254,8 @@ const parkingStyles = `
   .ref-bay:disabled { opacity: 1; cursor: default; }
   .ref-bay[data-selected='true'] { box-shadow: inset 0 0 0 2px var(--accent); }
   .ref-bay-title, .ref-bay-status { position: absolute; left: 3px; right: 3px; white-space: nowrap; }
-  .ref-bay-title { top: 7px; font: 400 clamp(14px,1.58vw,23px)/1.15 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing: .045em; }
-  .ref-bay-status { bottom: 7px; font: 700 clamp(10px,1vw,14px)/1.1 'Noto Serif Gujarati',Arial,sans-serif; }
+  .ref-bay-title { top: 7px; font: 400 clamp(10px,5cqw,22px)/1.15 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing: .045em; }
+  .ref-bay-status { bottom: 7px; font: 700 clamp(8px,3.2cqw,15px)/1.1 'Noto Serif Gujarati',Arial,sans-serif; }
   .ref-gate, .ref-waiting { color: var(--navy); font: 400 15px/1 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing: .045em; white-space: nowrap; }
   .ref-gate { display: flex; align-items: center; gap: 7px; font-size: 13px; pointer-events: none; }
   .ref-gate-icon { display: grid; place-items: center; width: 20px; height: 16px; flex: none; }
@@ -1310,5 +1311,47 @@ const parkingStyles = `
     .ref-stack .ref-controls { width: 100%; padding-top: 0; }
     .ref-stack .ref-lot, .ref-queue .ref-controls > * { width: 100%; }
     .ref-stack .ref-divider { display: none; }
+  }
+  @media (max-height: 900px) and (min-width: 560px) and (orientation: landscape) {
+    .dsa .ref-stack { display: grid; grid-template-columns: minmax(0,1fr) 2px minmax(0,1fr); align-items: stretch; gap: clamp(12px,2vw,24px); padding: 0 clamp(4px,1vw,8px); }
+    .dsa .ref-stack .ref-lot { width: min(100%,59vh); align-self: start; justify-self: center; }
+    .dsa .ref-stack .ref-surface { width: 100%; height: auto; margin-inline: 0; aspect-ratio: ${STACK.size[0]} / ${STACK.size[1]}; }
+    .dsa .ref-stack .ref-divider { display: block; grid-column: 2; align-self: stretch; width: 2px; height: auto; margin: 0; }
+    .dsa .ref-stack .ref-controls { display: grid; grid-column: 3; grid-template-columns: minmax(0,1fr); align-self: start; justify-self: center; align-items: start; gap: 8px; width: min(100%,57vh); padding: 0; }
+    .dsa .ref-stack .ref-monitor h2 { margin-bottom: 4px; color: #111; font-size: clamp(12px,1.35vw,16px); }
+    .dsa .ref-stack .ref-log h2 { margin-bottom: 4px; font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-stack .ref-bay-title { top: 3px; font-size: clamp(10px,5cqw,22px); line-height: 1; }
+    .dsa .ref-stack .ref-bay-status { bottom: 3px; font-size: clamp(8px,3.2cqw,15px); line-height: 1; }
+    .dsa .ref-stack .ref-form { gap: 6px; }
+    .dsa .ref-stack .ref-monitor-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 4px; min-height: 0; padding: 4px 6px; }
+    .dsa .ref-stack .ref-monitor-row > span { font-size: clamp(11px,1.2vw,14px); white-space: normal; }
+    .dsa .ref-stack .ref-monitor-row .dsa-input, .dsa .ref-stack .ref-monitor-row output { height: 30px; padding: 4px 6px; font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-stack .ref-monitor-row output strong { font-size: clamp(13px,1.35vw,16px); }
+    .dsa .ref-stack .ref-actions { flex-wrap: nowrap; gap: 6px; }
+    .dsa .ref-stack .ref-actions .dsa-button { flex: 1 1 0; min-width: 0; min-height: 30px; padding: 4px 6px; font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-stack .dsa-feedback { min-height: 0; font-size: clamp(11px,1.05vw,13px); }
+    .dsa .ref-stack .ref-log { grid-template-columns: minmax(64px,40%) minmax(0,1fr); gap: 6px; height: min(220px,55vh); min-height: 0; margin-top: 0; padding: 8px; border-radius: 10px; }
+    .dsa .ref-stack .ref-log ol { padding: 6px; }
+    .dsa .ref-stack .ref-log li { grid-template-columns: minmax(42px,30%) minmax(0,1fr); gap: 4px; padding-block: 4px; font-size: clamp(11px,1.05vw,13px); }
+    .dsa .ref-stack .ref-log li strong { padding: 2px; font-size: clamp(9px,.9vw,11px); }
+    .dsa .ref-queue { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; padding: 0; }
+    .dsa .ref-queue .ref-lot { width: 100%; min-width: 0; }
+    .dsa .ref-queue .queue-surface { width: 100%; height: auto; }
+    .dsa .ref-queue .ref-controls { display: grid; grid-template-columns: minmax(0,.95fr) minmax(0,1.05fr); gap: 12px; width: 100%; margin: 0; padding: 0; }
+    .dsa .ref-queue .ref-monitor h2, .dsa .ref-queue .ref-log h2 { margin-bottom: 4px; font-size: clamp(12px,1.35vw,16px); }
+    .dsa .ref-queue .ref-monitor h2 { color: #111; }
+    .dsa .ref-queue .ref-log h2 { font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-queue .ref-form { gap: 6px; }
+    .dsa .ref-queue .ref-monitor-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 4px; min-height: 0; padding: 4px 6px; }
+    .dsa .ref-queue .ref-monitor-row > span { font-size: clamp(11px,1.2vw,14px); white-space: normal; }
+    .dsa .ref-queue .ref-monitor-row .dsa-input, .dsa .ref-queue .ref-monitor-row output { height: 30px; padding: 4px 6px; font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-queue .ref-monitor-row output strong { font-size: clamp(13px,1.35vw,16px); }
+    .dsa .ref-queue .ref-actions { flex-wrap: nowrap; gap: 6px; }
+    .dsa .ref-queue .ref-actions .dsa-button { flex: 1 1 0; min-width: 0; min-height: 30px; padding: 4px 6px; font-size: clamp(12px,1.2vw,14px); }
+    .dsa .ref-queue .dsa-feedback { min-height: 0; font-size: clamp(11px,1.05vw,13px); }
+    .dsa .ref-queue .ref-log { grid-template-columns: minmax(64px,40%) minmax(0,1fr); gap: 6px; height: min(180px,36vh); min-height: 0; margin-top: 0; padding: 8px; border-radius: 10px; }
+    .dsa .ref-queue .ref-log ol { padding: 6px; }
+    .dsa .ref-queue .ref-log li { grid-template-columns: minmax(42px,30%) minmax(0,1fr); gap: 4px; padding-block: 4px; font-size: clamp(11px,1.05vw,13px); }
+    .dsa .ref-queue .ref-log li strong { padding: 2px; font-size: clamp(9px,.9vw,11px); }
   }
 `;

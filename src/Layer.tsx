@@ -19,6 +19,18 @@ type TreeResult = {
   values: Record<TraversalOrder, Array<string | number>>;
 };
 type ExitStep = { cars: number[]; event: 'Exit' | 'Re-enter'; detail: string };
+type MovingDisk = {
+  disk: number;
+  fromPeg: number;
+  toPeg: number;
+  startX: number;
+  startY: number;
+  moveX: number;
+  moveY: number;
+  liftY: number;
+  width: number;
+  height: number;
+};
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { accent?: boolean };
 type FieldProps = {
   label: string;
@@ -62,9 +74,9 @@ function BulkField({label, value, onChange, placeholder}: BulkFieldProps) {
 
 function parkingExitSteps(cars: number[], target: number, isStack: boolean): ExitStep[] {
   const index = cars.indexOf(target);
-  const temporarilyOut = isStack ? [...cars].reverse() : cars.slice(0, index);
+  const temporarilyOut = isStack ? cars.slice(index + 1).reverse() : cars.slice(0, index);
   let parked = [...cars];
-  const leaving = isStack ? temporarilyOut : [...temporarilyOut, target];
+  const leaving = [...temporarilyOut, target];
   const steps: ExitStep[] = leaving.map((car): ExitStep => {
     parked = isStack ? parked.slice(0, -1) : parked.slice(1);
     return {cars:parked, event:'Exit', detail:'Car #' + car + (car === target ? ' left the lot' : ' moved out temporarily')};
@@ -84,6 +96,19 @@ const shellStyles = `
   .dsa { display:flex; flex:1; flex-direction:column; width:100%; min-height:100vh; background:var(--paper); text-align:left; }
   .dsa select { font:inherit; }
   .dsa .dsa-peg[aria-pressed='true'] { border-color:var(--accent); background:rgba(255,255,255,.55); }
+  .dsa .dsa-peg { height:100%; align-self:stretch; touch-action:manipulation; transition:background .16s ease,border-color .16s ease,box-shadow .16s ease; }
+  .dsa .dsa-peg:not(:disabled):hover { border-color:var(--accent); background:rgba(217,84,30,.18); box-shadow:0 0 0 3px rgba(217,84,30,.18),0 0 16px rgba(217,84,30,.55); }
+  .dsa .dsa-pegs { position:relative; }
+  .dsa .dsa-disk { max-width:none; }
+  .dsa .dsa-disk.is-moving { visibility:hidden; }
+  .dsa .dsa-moving-disk { position:absolute; z-index:5; pointer-events:none; animation:dsa-disk-transfer 520ms cubic-bezier(.22,.72,.24,1) forwards; }
+  @keyframes dsa-disk-transfer {
+    0% { transform:translate(0,0); }
+    35% { transform:translate(0,var(--lift-y)); }
+    70% { transform:translate(var(--move-x),var(--lift-y)); }
+    100% { transform:translate(var(--move-x),var(--move-y)); }
+  }
+  @media(prefers-reduced-motion:reduce) { .dsa .dsa-moving-disk { animation-duration:1ms; } }
   .dsa .dsa-peg.shake { animation:dsa-shake .36s ease-in-out; }
   .dsa .dsa-disk.active { color:#fff; box-shadow:0 0 0 3px var(--accent); }
   .dsa .dsa-disk[draggable='true'] { cursor:grab; }
@@ -94,12 +119,12 @@ const shellStyles = `
   .dsa-app-nav { position:sticky; top:0; z-index:20; display:flex; justify-content:center; gap:clamp(12px,4vw,62px); padding:15px 20px; background:#111; color:var(--paper); overflow-x:auto; }
   .dsa-app-nav button { flex:none; border:0; padding:0; color:inherit; background:none; font:700 clamp(14px,1.6vw,22px)/1.2 'Noto Serif Gujarati',Georgia,serif; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
   .dsa-app-nav button[aria-current='page'] { color:#fff; text-decoration-thickness:3px; }
-  .dsa-page { flex:1; width:100%; max-width:none; margin:0; padding:28px clamp(16px,4vw,58px) 48px; }
-  .dsa-page-heading { margin:0 0 22px; }
+  .dsa-page { flex:1; width:100%; max-width:1440px; margin-inline:auto; padding:28px clamp(16px,4vw,58px) 48px; }
+  .dsa-page-heading { margin:0 0 22px; text-align:center; }
   .dsa-page-kicker { color:var(--navy); font:400 19px/1.1 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing:.08em; }
   .dsa-page-heading h1 { margin:8px 0 4px; color:#111; font:400 clamp(34px,4vw,52px)/1 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing:.015em; }
-  .dsa-page-heading p { max-width:900px; font-size:16px; color:var(--dark); }
-  .dsa-home { display:flex; flex:1; flex-direction:column; width:100%; max-width:none; margin:0; padding:clamp(30px,5vw,72px) clamp(18px,4.2vw,60px); }
+  .dsa-page-heading p { max-width:900px; margin-inline:auto; font-size:16px; color:var(--dark); }
+  .dsa-home { display:flex; flex:1; flex-direction:column; width:100%; max-width:1440px; margin-inline:auto; padding:clamp(30px,5vw,72px) clamp(18px,4.2vw,60px); }
   .dsa-home-hero { padding:0 0 clamp(42px,6vw,78px); border-radius:0; background:transparent; text-align:center; }
   .dsa-home-hero .dsa-page-kicker { display:none; }
   .dsa-home-hero h1 { max-width:none; margin:16px auto 0; color:#111; font:400 clamp(38px,7vw,92px)/1 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing:.045em; text-shadow:3px 4px 0 rgba(0,0,0,.18); }
@@ -118,20 +143,128 @@ const shellStyles = `
   .dsa-home-card span { color:var(--accent); font:400 16px/1 'Bebas Neue','Arial Narrow',sans-serif; letter-spacing:.08em; }
   .dsa-home-card strong { color:white; font:400 27px/1 'Bebas Neue','Arial Narrow',sans-serif; }
   .dsa-home-card small { color:var(--paper); font-size:14px; line-height:1.4; }
-  .dsa-menu-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; margin-top:30px; background:var(--accent); }
+  .dsa-menu-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:1fr; gap:3px; width:min(100%,1200px); margin:30px auto 0; background:var(--accent); }
   .dsa-menu-item { min-height:175px; display:grid; grid-template-rows:auto auto 1fr; gap:10px; padding:24px; border:0; background:var(--panel); text-align:left; cursor:pointer; }
   .dsa-menu-item:hover { background:#e4e1da; }
   .dsa-menu-item span { justify-self:start; padding:7px 13px; border-radius:10px; color:white; background:#111; font:400 20px/1 'Bebas Neue','Arial Narrow',sans-serif; }
   .dsa-menu-item strong { color:var(--accent); font:700 26px/1.1 'Noto Serif Gujarati',Georgia,serif; }
   .dsa-menu-item small { color:#111; font:500 16px/1.4 'Noto Serif Gujarati',Georgia,serif; }
-  .dsa-team-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:18px; margin-top:30px; }
-  .dsa-team-card { min-height:220px; padding:22px; border-radius:14px; background:var(--panel); }
-  .dsa-team-card span { display:block; margin-bottom:12px; color:var(--accent); font:400 18px/1 'Bebas Neue','Arial Narrow',sans-serif; }
-  .dsa-team-card h2 { margin-bottom:12px; color:var(--navy); font:400 25px/1.1 'Bebas Neue','Arial Narrow',sans-serif; }
-  .dsa-team-card p { color:var(--dark); font-size:15px; }
+  .dsa-team-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px 1.7vw; width:min(74.3vw,100%); margin:30px 0 0 calc(50% - 33.4vw); }
+  .dsa-team-card { display:grid; grid-template-columns:minmax(0,180px) minmax(0,1fr); gap:12px; align-items:start; min-height:180px; padding:0; background:transparent; }
+  .dsa-team-avatar { width:100%; aspect-ratio:1; border-radius:8px; background:var(--dark); }
+  .dsa-team-details { min-width:0; padding-top:8px; }
+  .dsa-team-card h2 { margin:0 0 5px; color:#111; font:700 clamp(15px,1.5vw,18px)/1.2 Arial,sans-serif; }
+  .dsa-team-card ul { margin:0; padding:0; color:var(--dark); font:700 clamp(15px,1.5vw,18px)/1.25 Arial,sans-serif; list-style:none; }
+  .dsa-team-card li::before { content:'> '; }
+  .dsa-team-page .dsa-page-heading { width:min(100%,92vw); margin-inline:auto; padding-bottom:14px; border-bottom:2px solid var(--accent); }
+  .dsa-team-page .dsa-page-heading h1 { margin:4px 0; font:700 clamp(28px,5.2vw,42px)/1.05 Arial,sans-serif; }
+  .dsa-team-page .dsa-page-heading p { max-width:450px; font:clamp(12px,1.6vw,16px)/1.3 Arial,sans-serif; }
   @media(max-width:900px) { .dsa-home-modules { grid-template-columns:repeat(2,minmax(0,1fr)); } .dsa-app-nav { justify-content:flex-start; } }
-  @media(max-width:560px) { .dsa-home-modules,.dsa-menu-grid { grid-template-columns:1fr; } .dsa-home-cta { min-width:100%; min-height:70px; } }
+  @media(max-width:560px) { .dsa-home-modules,.dsa-menu-grid,.dsa-team-grid { grid-template-columns:1fr; } .dsa-home-cta { min-width:100%; min-height:70px; } }
   @media(max-width:900px) { .dsa-app-nav { justify-content:flex-start; } }
+  @media(max-height:900px) and (min-width:560px) and (orientation:landscape) {
+    .dsa-page { padding:clamp(12px,3.5vh,24px) clamp(16px,3.8vw,28px) 14px; }
+    .dsa-page-heading { margin-bottom:8px; }
+    .dsa-page-kicker { font-size:13px; }
+    .dsa-page-heading h1 { margin:2px 0; font-size:clamp(22px,2.4vw,30px); }
+    .dsa-page-heading p { font-size:12px; line-height:1.2; }
+  }
+  @media(max-height:900px) and (min-width:560px) and (orientation:landscape) {
+    .dsa { font-size:clamp(14px,1.2vw,16px); }
+    .dsa-app-nav { justify-content:space-around; gap:8px; padding:8px 12px; }
+    .dsa-app-nav button { font-size:clamp(12px,1.2vw,16px); }
+    .dsa-page-kicker { font-size:clamp(12px,1.1vw,14px); }
+    .dsa-page-heading p { font-size:clamp(12px,1.1vw,14px); }
+    .dsa-home { padding:clamp(28px,4vh,34px) clamp(20px,3.8vw,30px) 10px; }
+    .dsa-home-hero { padding-bottom:clamp(22px,4.7vw,34px); }
+    .dsa-home-hero h1 { margin:4px auto 0; font-size:clamp(34px,5.8vw,52px); }
+    .dsa-home-hero h2 { margin:4px auto 8px; font-size:clamp(30px,4.8vw,40px); }
+    .dsa-home-hero p { max-width:440px; margin:0 auto 10px; font:clamp(15px,1.5vw,17px)/1.2 Arial,sans-serif; }
+    .dsa-home-actions { gap:clamp(16px,5vw,36px); }
+    .dsa-home-cta { min-height:56px; min-width:clamp(180px,26vw,260px); padding:6px 22px; font-size:clamp(15px,1.6vw,18px); line-height:1.15; }
+    .dsa-home-cta::before,.dsa-home-cta::after { top:10px; bottom:10px; }
+    .dsa-home-modules { grid-template-columns:repeat(4,minmax(0,1fr)); gap:clamp(12px,2.4vw,18px); }
+    .dsa-home-card { min-height:180px; gap:12px; padding:20px; }
+    .dsa-home-card span { color:var(--paper); font-size:clamp(15px,1.5vw,18px); }
+    .dsa-home-card strong { font-size:clamp(20px,2.1vw,25px); }
+    .dsa-home-card small { font-size:clamp(16px,1.6vw,19px); }
+    .dsa-menu-grid { grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; gap:3px; width:min(100%,1200px); margin:12px auto 0; }
+    .dsa-menu-item { min-height:145px; gap:8px; padding:16px; }
+    .dsa-menu-item span { padding:5px 9px; font-size:clamp(15px,1.6vw,18px); }
+    .dsa-menu-item strong { font-size:clamp(20px,2.1vw,25px); }
+    .dsa-menu-item small { font-size:clamp(15px,1.5vw,18px); }
+    .dsa-menu-page .dsa-page-heading h1 { font-size:clamp(34px,4vw,48px); }
+    .dsa-menu-page .dsa-page-heading p { font-size:clamp(17px,1.8vw,21px); }
+    .dsa-team-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px 1.7vw; width:min(74.3vw,100%); margin:16px 0 0 calc(50% - 33.4vw); }
+    .dsa-team-card { grid-template-columns:minmax(0,180px) minmax(0,1fr); gap:12px; min-height:180px; padding:0; }
+    .dsa-team-details { padding-top:8px; }
+    .dsa-team-card h2 { margin-bottom:5px; font-size:clamp(15px,1.5vw,18px); }
+    .dsa-team-card ul { font-size:clamp(15px,1.5vw,18px); }
+    .dsa-team-page .dsa-page-heading { margin-bottom:0; padding-bottom:12px; }
+    .dsa-team-page .dsa-page-heading h1 { font-size:clamp(28px,5.2vw,42px); }
+    .dsa .dsa-workspace { display:grid; gap:12px; margin:0; padding:0; }
+    .dsa-study-page { padding-top:clamp(12px,3.5vh,24px); }
+    .dsa-study-page .dsa-page-heading { margin-bottom:16px; text-align:center; }
+    .dsa-study-page .dsa-page-kicker { font-size:clamp(15px,1.4vw,18px); }
+    .dsa-study-page .dsa-page-heading h1 { margin:6px 0 4px; font-size:clamp(34px,4vw,50px); }
+    .dsa-study-page .dsa-page-heading p { display:none; }
+    .dsa .dsa-tree { grid-template-columns:minmax(0,.64fr) minmax(0,1fr); align-items:stretch; gap:12px; margin-inline:8px; padding:0; }
+    .dsa .dsa-search { grid-template-columns:minmax(0,.64fr) minmax(0,1fr); align-items:stretch; gap:12px; min-height:0; margin:0 8px; padding:0; background:transparent; }
+    .dsa .dsa-search .dsa-form,.dsa .dsa-search .dsa-results { min-width:0; padding:10px; border-radius:15px; background:var(--panel); }
+    .dsa .dsa-hanoi { grid-template-columns:minmax(0,.64fr) minmax(0,1fr); gap:12px; margin-inline:8px; padding:0; }
+    .dsa .dsa-search-entry { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px; align-items:end; }
+    .dsa .dsa-search-entry .dsa-form-row { grid-template-columns:minmax(55px,42%) minmax(0,1fr); gap:4px; }
+    .dsa .dsa-search-entry .dsa-button { min-width:0; min-height:30px; padding:4px 8px; }
+    .dsa .dsa-tree .dsa-panel { min-height:0; }
+    .dsa .dsa-panel { padding:10px; }
+    .dsa .dsa-form { gap:6px; }
+    .dsa .dsa-form-row { grid-template-columns:minmax(75px,42%) minmax(0,1fr); gap:6px; }
+    .dsa .dsa-form-row span { min-height:30px; padding:4px 6px; font-size:clamp(13px,1.4vw,16px); }
+    .dsa .dsa-label { font-size:clamp(14px,1.5vw,18px); }
+    .dsa .dsa-button { min-width:0; min-height:32px; padding:4px 8px; font-size:clamp(12px,1.2vw,15px); }
+    .dsa .dsa-actions { gap:6px; }
+    .dsa .dsa-input,.dsa .dsa-value { height:30px; padding:4px 8px; font-size:clamp(12px,1.2vw,14px); }
+    .dsa .dsa-bulk { min-height:36px; max-height:64px; padding:4px 8px; font-size:clamp(12px,1.2vw,14px); }
+    .dsa .dsa-help { font-size:clamp(12px,1.1vw,14px); line-height:1.2; }
+    .dsa .dsa-feedback { min-height:0; font-size:clamp(11px,1vw,13px); }
+    .dsa .dsa-results { gap:6px; }
+    .dsa .dsa-results-header { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px; }
+    .dsa .dsa-results-header > strong { font:700 clamp(12px,1vw,14px)/1.2 Arial,sans-serif; }
+    .dsa .dsa-results-header .dsa-button { min-width:0; min-height:28px; padding:4px 10px; font-size:clamp(11px,1vw,13px); }
+    .dsa .dsa-diagram { height:min(42vh,360px); }
+    .dsa .dsa-traversals { min-height:42px; }
+    .dsa .dsa-traversals div { padding:4px 6px; }
+    .dsa .dsa-traversals strong,.dsa .dsa-traversals p { font-size:clamp(11px,1.1vw,13px); }
+    .dsa .dsa-traversals p { max-height:48px; }
+    .dsa .dsa-hanoi .dsa-form { min-height:0; margin-top:0; }
+    .dsa .dsa-hanoi-board { min-height:0; padding:8px; }
+    .dsa .dsa-pegs-wrap { min-height:0; padding:8px; }
+    .dsa .dsa-pegs { height:min(37vh,280px); gap:4px; }
+    .dsa .dsa-peg { min-height:0; }
+    .dsa .dsa-stem { height:min(26vh,170px); bottom:30px; }
+    .dsa .dsa-base { bottom:26px; }
+    .dsa .dsa-disks { bottom:30px; }
+    .dsa .dsa-disk { font-size:clamp(9px,1.2vw,13px); }
+    .dsa .dsa-peg-label { font-size:clamp(10px,1.2vw,14px); white-space:nowrap; }
+    .dsa .dsa-stats { min-height:0; padding:6px 8px; }
+    .dsa .dsa-stats p { padding:2px 0; font-size:clamp(10px,1vw,12px); }
+  }
+  @media(max-height:520px) and (min-width:560px) and (orientation:landscape) {
+    .dsa .dsa-tree .dsa-form { gap:4px; }
+    .dsa .dsa-tree .dsa-panel { padding:8px; }
+    .dsa .dsa-tree .dsa-form-row span { min-height:28px; padding:3px 6px; }
+    .dsa .dsa-tree .dsa-input,.dsa .dsa-tree .dsa-value { height:28px; }
+    .dsa .dsa-tree .dsa-bulk { min-height:32px; max-height:48px; }
+    .dsa .dsa-tree .dsa-button { min-height:30px; }
+    .dsa .dsa-tree .dsa-help { line-height:1.1; }
+  }
+  @media(max-width:560px) {
+    .dsa-team-grid { width:100%; }
+    .dsa-team-card { grid-template-columns:minmax(0,110px) minmax(0,1fr); min-height:110px; }
+  }
+  @media(max-width:1000px) {
+    .dsa-team-grid { grid-template-columns:1fr; width:min(100%,600px); margin:16px auto 0; }
+  }
 `;
 
 const STUDIES = [
@@ -187,7 +320,7 @@ function MenuPage({ onSelect }: { onSelect: (mode: string) => void }) {
     { mode: 'members', kicker: 'TEAM', title: 'BEHIND THE SCENE', description: 'Meet the contributors behind this data structures and algorithms project.' },
   ];
   return (
-    <main className="dsa-page">
+    <main className="dsa-page dsa-menu-page">
       <header className="dsa-page-heading">
         <h1>Case Studies Menu</h1>
         <p>Select a case study to open its interactive simulation.</p>
@@ -205,23 +338,27 @@ function MenuPage({ onSelect }: { onSelect: (mode: string) => void }) {
 
 function MembersPage() {
   const team = [
-    { name: 'NOOL, JAMEELAH ZARRINA', role: 'UI/UX Designer · Frontend Developer' },
-    { name: 'PLAZA, JAMES CLAUDE', role: 'Algorithm Engineer · Stack & Queue' },
-    { name: 'MAGTUBA, AIO', role: 'Algorithm Engineer · Trees & Hanoi' },
-    { name: 'PADAOANG, LOVELY', role: 'Frontend-Backend Integration · QA' },
+    { name: 'NOOL, JAMEELAH ZARRINA', roles: ['UI/UX Designer', 'Frontend Developer'] },
+    { name: 'PLAZA, JAMES CLAUDE', roles: ['Python Backend', 'Algorithm Engineer'] },
+    { name: 'MAGTUBA, AIO', roles: ['Python Backend', 'Algorithm Engineer'] },
+    { name: 'PADAOANG, LOVELY', roles: ['Frontend-Backend Integration', 'State Specialist'] },
   ];
   return (
-    <main className="dsa-page">
+    <main className="dsa-page dsa-team-page">
       <header className="dsa-page-heading">
         <h1>Project Team Members</h1>
-        <p>Meet the team behind the design, algorithms, and interactive visualizations.</p>
+        <p>Group contributors responsible for the design, algorithm development, backend logic, and frontend visual integration.</p>
       </header>
       <section className="dsa-team-grid" aria-label="Project team">
-        {team.map((member, index) => (
+        {team.map((member) => (
           <article className="dsa-team-card" key={member.name}>
-            <span>MEMBER #{String(index + 1).padStart(2, '0')}</span>
-            <h2>{member.name}</h2>
-            <p>{member.role}</p>
+            <div className="dsa-team-avatar" aria-hidden="true" />
+            <div className="dsa-team-details">
+              <h2>{member.name}</h2>
+              <ul>
+                {member.roles.map((role) => <li key={role}>{role}</li>)}
+              </ul>
+            </div>
           </article>
         ))}
       </section>
@@ -275,9 +412,13 @@ function TreeDiagram({root, generated}: { root: TreeNode | null; generated: bool
   </div>;
 }
 
-function TreeResults({result, search = false}: { result: TreeResult | null; search?: boolean }) {
+function TreeResults({result, search = false, canGenerate, onGenerate}: { result: TreeResult | null; search?: boolean; canGenerate: boolean; onGenerate: () => void }) {
   const outputs: Array<[string, TraversalOrder]> = search ? [['Sorted in-order output','in']] : [['In-order','in'],['Pre-order','pre'],['Post-order','post']];
   return <div className={'dsa-results' + (search ? '' : ' dsa-panel')}>
+    <div className="dsa-results-header">
+      <strong>TREE DIAGRAM</strong>
+      <Button disabled={!canGenerate} onClick={onGenerate}>Generate tree</Button>
+    </div>
     <TreeDiagram root={result?.root ?? null} generated={!!result} />
     <div className="dsa-traversals" style={{'--outputs':outputs.length} as React.CSSProperties & {'--outputs': number}} aria-live="polite">
       {outputs.map(([name,order]) => <div key={order}><strong>{name.toUpperCase()}</strong>
@@ -356,10 +497,9 @@ function BinaryTree() {
       <BulkField label="Bulk nodes" value={bulk} onChange={setBulk} placeholder={'["A + B", "7", "C", null, "E"]'} />
       <div className="dsa-actions"><Button disabled={!count || !bulk.trim()} onClick={applyList}>Apply list</Button></div>
       <p className="dsa-help">{count ? slots.size + ' of ' + count + ' positions configured' : 'Set the node count to start.'}</p>
-      <div className="dsa-actions"><Button disabled={!canGenerate} onClick={generate}>Generate</Button></div>
       {notice && <Feedback notice={notice} />}
     </div>
-    <TreeResults result={result} />
+    <TreeResults result={result} canGenerate={canGenerate} onGenerate={generate} />
   </div>;
 }
 
@@ -425,17 +565,18 @@ function SearchTree() {
     <div className="dsa-form">
       <Field label="Node count" value={countText} onChange={updateCount} placeholder="e.g. 5" inputMode="numeric" />
       <p className="dsa-help">Enter exactly that many numbers.</p>
-      <Field label="Input value" value={number} onChange={setNumber} placeholder="e.g. 8" inputMode="decimal" onEnter={insert} />
-      <div className="dsa-actions"><Button disabled={!count || !number.trim() || numbers.length >= count} onClick={insert}>Insert</Button></div>
+      <div className="dsa-search-entry">
+        <Field label="Input value" value={number} onChange={setNumber} placeholder="e.g. 8" inputMode="decimal" onEnter={insert} />
+        <Button disabled={!count || !number.trim() || numbers.length >= count} onClick={insert}>Insert</Button>
+      </div>
       <hr className="dsa-rule" />
       <BulkField label="Input bulk values" value={bulk} onChange={setBulk} placeholder="e.g. 8, 3, 10, 1, 6" />
       <div className="dsa-actions"><Button disabled={!count || !bulk.trim()} onClick={applyList}>Apply list</Button></div>
       <p className="dsa-help">{count ? numbers.length + ' of ' + count + ' values entered' : 'Set the node count to start.'}</p>
       {numbers.length > 0 && <p className="dsa-help" style={{maxHeight:80,overflow:'auto',overflowWrap:'anywhere'}}>{numbers.join(', ')}</p>}
-      <div className="dsa-actions"><Button disabled={!canGenerate} onClick={generate}>Generate</Button></div>
       {notice && <Feedback notice={notice} />}
     </div>
-    <TreeResults result={result} search />
+    <TreeResults result={result} search canGenerate={canGenerate} onGenerate={generate} />
   </div>;
 }
 
@@ -454,6 +595,8 @@ function Hanoi() {
   const [diskCount,setDiskCount] = useState(4);
   const [pegCount,setPegCount] = useState(3);
   const [board,setBoard] = useState<number[][]>(() => createInitialPegs(4,3));
+  const [movingDisk,setMovingDisk] = useState<MovingDisk | null>(null);
+  const [pegAreaHeight,setPegAreaHeight] = useState(319);
   const [source,setSource] = useState<number | null>(null);
   const [dragFromPeg,setDragFromPeg] = useState<number | null>(null);
   const [shakePeg,setShakePeg] = useState<number | null>(null);
@@ -467,6 +610,8 @@ function Hanoi() {
   const autoMovesRef = useRef<HanoiMove[]>([]);
   const autoIndexRef = useRef(0);
   const shakeTimer = useRef<number | null>(null);
+  const pegsRef = useRef<HTMLDivElement | null>(null);
+  const pegRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const goal = pegCount - 1;
   const won = board[goal]?.length === diskCount;
   const optimalMoves = useMemo(() => getOptimalHanoiMoveCount(diskCount,pegCount),[diskCount,pegCount]);
@@ -476,6 +621,15 @@ function Hanoi() {
     const timer = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1),1000);
     return () => window.clearInterval(timer);
   },[timerActive,won]);
+  useEffect(() => {
+    const element = pegsRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.height > 0) setPegAreaHeight(entry.contentRect.height);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  },[]);
   useEffect(() => {
     if (!solving || paused) return;
     const timer = window.setTimeout(() => {
@@ -513,6 +667,7 @@ function Hanoi() {
     setDiskCount(nextDisks);
     setPegCount(nextPegs);
     setBoard(createInitialPegs(nextDisks,nextPegs));
+    setMovingDisk(null);
     setSource(null);
     setDragFromPeg(null);
     setShakePeg(null);
@@ -532,27 +687,68 @@ function Hanoi() {
     shakeTimer.current = window.setTimeout(() => setShakePeg((current) => current === peg ? null : current),360);
   }
   function attemptMove(fromPeg: number,toPeg: number) {
-    if (solving || won) return;
+    if (solving || won || movingDisk) return;
     const check = isValidHanoiMove(board,fromPeg,toPeg);
     if (!check.valid) {
       triggerShake(toPeg,check.reason ?? 'Illegal move.');
       setSource(null);
       return;
     }
+    const sourceStack = board[fromPeg];
+    const disk = sourceStack?.[sourceStack.length - 1];
+    const pegs = pegsRef.current;
+    const sourcePeg = pegRefs.current[fromPeg];
+    const targetPeg = pegRefs.current[toPeg];
+    const sourceDisk = sourcePeg?.querySelector<HTMLElement>(`[data-disk="${disk}"]`);
+    const targetDisks = targetPeg?.querySelector<HTMLElement>('.dsa-disks');
+    if (disk === undefined || !pegs || !sourceDisk || !targetDisks)
+      return show('Could not start the disk move. Try again.',true);
+    const pegsRect = pegs.getBoundingClientRect();
+    const sourceRect = sourceDisk.getBoundingClientRect();
+    const targetDisksRect = targetDisks.getBoundingClientRect();
+    const targetStackLength = board[toPeg]?.length ?? 0;
+    const gap = Number.parseFloat(window.getComputedStyle(targetDisks).rowGap) || 0;
+    const startX = sourceRect.left - pegsRect.left;
+    const startY = sourceRect.top - pegsRect.top;
+    const endX = targetDisksRect.left + (targetDisksRect.width - sourceRect.width) / 2 - pegsRect.left;
+    const endY = targetDisksRect.bottom - pegsRect.top - (targetStackLength + 1) * sourceRect.height - targetStackLength * gap;
+    const peakY = Math.max(4,Math.min(startY,endY) - Math.max(20,sourceRect.height * 1.5));
+    setMovingDisk({
+      disk,
+      fromPeg,
+      toPeg,
+      startX,
+      startY,
+      moveX:endX - startX,
+      moveY:endY - startY,
+      liftY:peakY - startY,
+      width:sourceRect.width,
+      height:sourceRect.height,
+    });
+    setSource(null);
+    setDragFromPeg(null);
+    setNotice(null);
+  }
+  function completeMove() {
+    if (!movingDisk) return;
     const next = board.map((stack) => [...stack]);
-    const sourceStack = next[fromPeg];
-    const targetStack = next[toPeg];
+    const sourceStack = next[movingDisk.fromPeg];
+    const targetStack = next[movingDisk.toPeg];
     const disk = sourceStack?.pop();
-    if (disk === undefined || !targetStack) return;
+    if (disk !== movingDisk.disk || !targetStack) {
+      setMovingDisk(null);
+      return show('The disk could not be placed. Try the move again.',true);
+    }
     targetStack.push(disk);
     setBoard(next);
     setMoves((count) => count + 1);
     setSource(null);
+    setMovingDisk(null);
     setNotice(null);
     if (!timerActive) setTimerActive(true);
   }
   function pick(peg: number) {
-    if (solving || won) return;
+    if (solving || won || movingDisk) return;
     if (source === null) {
       if (!board[peg]?.length) return show('Peg ' + pegLabel(peg) + ' is empty. Select a peg with a disk.',true);
       setSource(peg);
@@ -562,6 +758,7 @@ function Hanoi() {
     attemptMove(source,peg);
   }
   function handleAutoSolve() {
+    if (movingDisk) return;
     if (solving) { setPaused((current) => !current); return; }
     setBoard(createInitialPegs(diskCount,pegCount));
     setSource(null);
@@ -574,39 +771,56 @@ function Hanoi() {
     setPaused(false);
     setSolving(true);
   }
-  const diskHeight = Math.min(24,Math.floor(194 / diskCount) - 2);
+  const diskHeight = Math.max(8,Math.min(24,Math.floor((pegAreaHeight - 60 - (diskCount - 1) * 2) / diskCount)));
   const phase = won ? 'Solved' : solving ? (paused ? 'Auto-solve paused' : 'Auto-solve in progress') : 'Ready to play';
   return <div className="dsa-workspace dsa-hanoi">
     <div className="dsa-panel dsa-form">
       <h2 className="dsa-label dsa-title-bar">GAME SETTING</h2>
-      <label className="dsa-form-row"><span className="dsa-label">Disk count</span><select className="dsa-input" value={diskText} disabled={solving} onChange={(event) => resetGame(Number(event.target.value),pegCount)}>{[3,4,5,6,7,8].map((count) => <option key={count} value={count}>{count} disks</option>)}</select></label>
-      <label className="dsa-form-row"><span className="dsa-label">Peg count</span><select className="dsa-input" value={pegText} disabled={solving} onChange={(event) => resetGame(diskCount,Number(event.target.value))}>{[3,4,5].map((count) => <option key={count} value={count}>{count} pegs</option>)}</select></label>
+      <label className="dsa-form-row"><span className="dsa-label">Disk count</span><select className="dsa-input" value={diskText} disabled={solving || movingDisk !== null} onChange={(event) => resetGame(Number(event.target.value),pegCount)}>{[3,4,5,6,7,8].map((count) => <option key={count} value={count}>{count} disks</option>)}</select></label>
+      <label className="dsa-form-row"><span className="dsa-label">Peg count</span><select className="dsa-input" value={pegText} disabled={solving || movingDisk !== null} onChange={(event) => resetGame(diskCount,Number(event.target.value))}>{[3,4,5].map((count) => <option key={count} value={count}>{count} pegs</option>)}</select></label>
       <label className="dsa-form-row"><span className="dsa-label">Solver speed</span><select className="dsa-input" value={speedMs} onChange={(event) => setSpeedMs(Number(event.target.value))}><option value={700}>Slow</option><option value={420}>Normal</option><option value={160}>Fast</option></select></label>
       <p className="dsa-help">Algorithm: {pegCount === 3 ? 'Classic recursion' : 'Frame–Stewart'} · Supports 3–8 disks and 3–5 pegs.</p>
       <hr className="dsa-rule" />
-      <div className="dsa-actions"><Button onClick={handleAutoSolve}>{solving ? (paused ? 'Resume solve' : 'Pause solve') : 'Auto solve'}</Button><Button accent onClick={() => resetGame()}>Reset game</Button></div>
+      <div className="dsa-actions"><Button disabled={movingDisk !== null} onClick={handleAutoSolve}>{solving ? (paused ? 'Resume solve' : 'Pause solve') : 'Auto solve'}</Button><Button disabled={movingDisk !== null} accent onClick={() => resetGame()}>Reset game</Button></div>
       <hr className="dsa-rule" />
       <div className="dsa-stats" aria-live="polite"><span className="dsa-label">STATS</span><p>MOVES TAKEN <strong>{moves}</strong></p><p>OPTIMAL MINIMUM <strong>{optimalMoves}</strong></p><p>ELAPSED TIME <strong>{formatElapsed(elapsedSeconds)}</strong></p><p>{phase}</p></div>
     </div>
     <div className="dsa-panel dsa-hanoi-board">
       <div className="dsa-pegs-wrap">
         <span className="dsa-label">MOVE ALL DISKS TO PEG {pegLabel(goal)}</span>
-        <div className="dsa-pegs" style={{'--peg-count':board.length} as React.CSSProperties & {'--peg-count':number}}>
-          {board.map((stack,peg) => <button type="button" key={peg} className={'dsa-peg' + (shakePeg === peg ? ' shake' : '')} aria-label={'Peg ' + pegLabel(peg) + (peg === goal ? ', target' : '')} aria-pressed={source === peg} disabled={solving || won} onClick={() => pick(peg)}
+        <div className="dsa-pegs" ref={pegsRef} style={{'--peg-count':board.length} as React.CSSProperties & {'--peg-count':number}}>
+          {board.map((stack,peg) => <button type="button" key={peg} ref={(element) => { pegRefs.current[peg] = element; }} className={'dsa-peg' + (shakePeg === peg ? ' shake' : '')} aria-label={'Peg ' + pegLabel(peg) + (peg === goal ? ', target' : '')} aria-pressed={source === peg} disabled={solving || won || movingDisk !== null} onClick={() => pick(peg)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => { event.preventDefault(); if (dragFromPeg !== null) { attemptMove(dragFromPeg,peg); setDragFromPeg(null); } }}>
             <span aria-hidden="true" className="dsa-stem" /><span aria-hidden="true" className="dsa-base" />
             <span className="dsa-disks" aria-hidden="true">
               {stack.map((disk,index) => {
                 const isTop = index === stack.length - 1;
-                return <span key={disk} draggable={isTop && !solving && !won} onDragStart={(event) => { event.stopPropagation(); setDragFromPeg(peg); setSource(peg); }} onDragEnd={() => setDragFromPeg(null)} className={'dsa-disk' + (source === peg && isTop ? ' active' : '')} style={{height:diskHeight,width:(28 + 66 * disk / diskCount) + '%',backgroundColor:diskColors[(disk - 1) % diskColors.length]}}>{'D' + disk}</span>;
+                return <span key={disk} data-disk={disk} draggable={isTop && !solving && !won && movingDisk === null} onDragStart={(event) => { event.stopPropagation(); setDragFromPeg(peg); setSource(peg); }} onDragEnd={() => setDragFromPeg(null)} className={'dsa-disk' + (source === peg && isTop ? ' active' : '') + (movingDisk?.disk === disk && movingDisk.fromPeg === peg ? ' is-moving' : '')} style={{height:diskHeight,width:(28 + 66 * disk / diskCount) + '%',backgroundColor:diskColors[(disk - 1) % diskColors.length]}}>{'D' + disk}</span>;
               })}
             </span>
             <span className="dsa-peg-label">PEG {pegLabel(peg)}{peg === 0 ? ' (START)' : peg === goal ? ' (TARGET)' : ''}</span>
           </button>)}
+          {movingDisk && <span
+            aria-hidden="true"
+            className="dsa-disk dsa-moving-disk"
+            onAnimationEnd={completeMove}
+            style={{
+              left:movingDisk.startX,
+              top:movingDisk.startY,
+              width:movingDisk.width,
+              height:movingDisk.height,
+              backgroundColor:diskColors[(movingDisk.disk - 1) % diskColors.length],
+              '--move-x':movingDisk.moveX + 'px',
+              '--move-y':movingDisk.moveY + 'px',
+              '--lift-y':movingDisk.liftY + 'px',
+            } as React.CSSProperties & {'--move-x': string; '--move-y': string; '--lift-y': string}}
+          >
+            {'D' + movingDisk.disk}
+          </span>}
         </div>
         {won && <p role="status" className="dsa-feedback">Puzzle solved in {moves} moves{moves === optimalMoves ? ' (optimal minimum)' : ' · optimal: ' + optimalMoves}.</p>}
-        {!won && <Feedback notice={notice} fallback="Select a source peg, then a destination. Drag a top disk to move it." />}
+        {!won && <Feedback notice={notice} fallback="Click anywhere on a peg with a disk, then the destination peg. You can also drag the top disk." />}
       </div>
     </div>
   </div>;
@@ -653,7 +867,7 @@ export default function Layer({simulation = 'stack'}) {
       ) : mode === 'members' ? (
         <MembersPage />
       ) : (
-        <main className="dsa-page">
+        <main className="dsa-page dsa-study-page">
           <header className="dsa-page-heading">
             <span className="dsa-page-kicker">
               CASE STUDY #{currentStudy?.number ?? ''} • {currentStudy?.label ?? mode.toUpperCase()}

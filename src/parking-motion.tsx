@@ -307,7 +307,6 @@ export default function Parking({ isStack, Button, Feedback, positiveInteger, pa
       if (id === null) return show('Enter a positive whole car number.', true);
       if (cars.includes(id)) return show('That car number is already parked.', true);
       if (cars.length === CAPACITY) return show('Lot is full. Exit a car to free a slot.', true);
-      if (isStack && cars.length && id <= cars[cars.length - 1]) return show('Enter a car number above the current top.', true);
     }
     void simulate(id, operation);
   }

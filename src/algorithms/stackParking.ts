@@ -54,7 +54,7 @@ export function validateStackCarInput(raw: string): { ok: true; carId: number } 
 
 /**
  * Stack (LIFO) Enter Operation:
- * Enforces capacity (10), uniqueness, and strictly ascending order from Slot #1 (bottom) to Slot #10 (top).
+ * Enforces capacity and uniqueness; car numbers do not determine stack position.
  */
 export function enterStackCar(currentSlots: StackCar[], carId: number): StackOperationResult {
   if (currentSlots.length >= STACK_MAX_CAPACITY) {
@@ -73,18 +73,6 @@ export function enterStackCar(currentSlots: StackCar[], carId: number): StackOpe
       steps: [],
       finalSlots: currentSlots,
     };
-  }
-
-  if (currentSlots.length > 0) {
-    const topCar = currentSlots[currentSlots.length - 1];
-    if (carId <= topCar.id) {
-      return {
-        ok: false,
-        error: `Ascending order rule: Car #${carId} cannot stack above Car #${topCar.id}. Enter a car number > ${topCar.id}.`,
-        steps: [],
-        finalSlots: currentSlots,
-      };
-    }
   }
 
   const nextCar: StackCar = { id: carId, entries: 1, exits: 0 };
@@ -110,8 +98,8 @@ export function enterStackCar(currentSlots: StackCar[], carId: number): StackOpe
 
 /**
  * Stack (LIFO) Exit Operation:
- * Pops the full stack into temporary parking from top to bottom, removes the target car,
- * then restores the remaining cars by popping the temporary stack in LIFO order.
+ * Moves only cars above the target to temporary parking, removes the target car,
+ * then restores the temporarily moved cars in LIFO order.
  */
 export function exitStackCar(currentSlots: StackCar[], carId: number): StackOperationResult {
   const targetIdx = currentSlots.findIndex((c) => c.id === carId);
@@ -124,32 +112,33 @@ export function exitStackCar(currentSlots: StackCar[], carId: number): StackOper
     };
   }
 
-  const workingSlots: StackCar[] = [];
+  const workingSlots = currentSlots
+    .slice(0, targetIdx)
+    .map((car) => ({ ...car }));
   const holdingBay: StackCar[] = [];
   const steps: StackStepSnapshot[] = [];
 
-  for (let fromSlot = currentSlots.length; fromSlot > 0; fromSlot -= 1) {
-    const popped = { ...currentSlots[fromSlot - 1] };
+  for (let slotIndex = currentSlots.length - 1; slotIndex > targetIdx; slotIndex -= 1) {
+    const popped = { ...currentSlots[slotIndex] };
     popped.exits += 1;
     holdingBay.push({ ...popped });
 
     steps.push({
-      slots: currentSlots.slice(0, fromSlot - 1).map((c) => ({ ...c })),
+      slots: currentSlots.slice(0, slotIndex).map((c) => ({ ...c })),
       holdingBay: holdingBay.map((c) => ({ ...c })),
       activeCarId: popped.id,
       log: {
         type: 'TEMP_EXIT',
-        message: `[TEMP EXIT] Car #${popped.id} popped from Slot #${fromSlot} to temporary parking (Exits: ${popped.exits}).`,
+        message: `[TEMP EXIT] Car #${popped.id} moved from Slot #${slotIndex + 1} to temporary parking (Exits: ${popped.exits}).`,
       },
     });
   }
 
-  const targetHoldingIndex = holdingBay.findIndex((car) => car.id === carId);
-  const targetCar = holdingBay.splice(targetHoldingIndex, 1)[0];
+  const targetCar = { ...currentSlots[targetIdx] };
   targetCar.exits += 1;
 
   steps.push({
-    slots: [],
+    slots: workingSlots.map((car) => ({ ...car })),
     holdingBay: holdingBay.map((c) => ({ ...c })),
     activeCarId: targetCar.id,
     log: {
